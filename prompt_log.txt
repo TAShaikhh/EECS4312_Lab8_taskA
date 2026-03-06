@@ -1,6 +1,409 @@
-## Student Name:
-## Student ID: 
+## Student Name: Umer Shaikh
+## Student ID: 218 931 790
 
-Prompt #1: {}
-Response #1: {}
---------------------------------------------------
+Prompt 1:
+{
+"Here is the full problem summary, functional
+requirements, constraints, and acceptance criteria for a
+Meeting Slot Scheduler system. Please review everything and
+tell me whether any ambiguities or missing clarifications
+exist before I ask you to generate code.
+
+PROBLEM SUMMARY:
+The system accepts working hours, busy intervals, a meeting
+duration, an optional buffer time, and an optional candidate
+window, and returns a chronologically ordered list of
+available appointment slots that satisfy all constraints.
+Each returned slot is exactly the requested duration in
+minutes and falls entirely within the effective scheduling
+window.
+
+INPUTS:
+working_hours: A tuple of two datetime objects (start, end).
+Validity: start must be strictly before end.
+busy_intervals: A list of (start, end) datetime tuples.
+Validity: May be empty, unsorted, or contain overlaps. If
+start > end, the system swaps them. If start == end, the
+interval is discarded.
+meeting_duration: An integer (minutes). Validity: Must be
+greater than 0.
+buffer_time (optional): An integer (minutes) for gaps
+before/after busy intervals. Validity: Must be 0 or greater.
+Defaults to 0.
+candidate_window (optional): A (start, end) datetime tuple.
+Validity: If provided, start must be before end. If not
+provided, the full working_hours are used.
+num_slots: An integer for the maximum results returned.
+Validity: Must be greater than 0.
+
+OUTPUT:
+The function returns a list of (start, end) datetime tuples.
+Each tuple is exactly meeting_duration minutes long. The list
+contains at most num_slots entries, sorted chronologically by
+start time. If no valid slot exists, it returns [ ].
+
+FUNCTIONAL REQUIREMENTS:
+FR1: The system shall only return slots within the
+intersection of working_hours and candidate_window.
+FR2: The system shall merge overlapping or adjacent busy
+intervals before calculating availability.
+FR3: The system shall ensure a minimum gap of buffer_time
+minutes exists between any returned slot and the nearest busy
+interval on each side.
+FR4: The system shall return slots that are exactly
+meeting_duration minutes in length.
+FR5: The system shall return results in chronological order.
+FR6: The system shall limit output to num_slots.
+FR7: The system shall return [ ] if no free block is long
+enough for the meeting plus required buffers.
+
+CONSTRAINTS:
+C1: Every returned slot must stay within the effective window
+bounds.
+C2: No returned slot may overlap with any busy interval.
+C3: Every returned slot must be at least buffer_time minutes
+from any busy interval.
+C4: Every returned slot must be exactly meeting_duration
+minutes long.
+C5: The system must return [ ] if the candidate_window does
+not overlap with working_hours.
+C6: The returned list must have at most num_slots entries.
+C7: The system must raise ValueError if meeting_duration <= 0,
+num_slots <= 0, or buffer_time < 0.
+C8: Overlapping/adjacent busy intervals must be merged before
+identifying gaps.
+C9: Busy intervals extending outside working_hours must be
+clipped; those entirely outside are discarded.
+C10: System output must be deterministic for identical inputs.
+
+ACCEPTANCE CRITERIA:
+AC1:
+Given working_hours 09:00-17:00, no busy_intervals,
+meeting_duration 30, and num_slots 2
+When the search function is executed
+Then the system returns [(09:00, 09:30), (09:30, 10:00)]
+Linked Constraint ID(s): C1, C4, C6, C10
+AC2:
+Given working_hours 09:00-17:00, a busy_interval 10:00-11:00,
+and buffer_time 15
+When the search function is executed
+Then no returned slot ends after 09:45 or starts before 11:15
+Linked Constraint ID(s): C2, C3
+AC3:
+Given working_hours 09:00-17:00, busy_intervals
+[(10:00, 10:40), (11:00, 17:00)], and meeting_duration 30
+When the search function is executed
+Then the system returns no slots within the 20-minute gap
+(10:40-11:00)
+Linked Constraint ID(s): C4
+AC4:
+Given working_hours 09:00-17:00 and a candidate_window
+13:00-14:00
+When the search function is executed
+Then every returned slot starts at or after 13:00 and ends at
+or before 14:00
+Linked Constraint ID(s): C1, C5
+AC5:
+Given busy_intervals [(10:00, 11:00), (10:30, 11:30)]
+When the search function is executed
+Then the intervals are merged and no slots are returned
+between 10:00 and 11:30
+Linked Constraint ID(s): C2, C8
+AC6:
+Given working_hours 09:00-17:00 and a busy_interval
+09:00-17:00
+When the search function is executed
+Then the system returns an empty list []
+Linked Constraint ID(s): C1, C2
+AC7:
+Given working_hours 09:00-17:00 and a candidate_window
+18:00-20:00
+When the search function is executed
+Then the system returns an empty list []
+Linked Constraint ID(s): C5
+AC8:
+Given working_hours 09:00-09:30 and a meeting_duration of 60
+When the search function is executed
+Then the system returns an empty list []
+Linked Constraint ID(s): C1, C4
+AC9:
+Given a meeting_duration of -1
+When the search function is executed
+Then the system raises a ValueError
+Linked Constraint ID(s): C7
+
+Please identify any ambiguities or missing clarifications."
+}
+
+Response 1:
+{
+I reviewed the provided problem summary, functional requirements,
+constraints, and acceptance criteria and found three things that
+needed clarification:
+
+1. BUFFER AT WINDOW BOUNDARIES: Should buffer_time be
+   enforced at the start/end of the effective window, or only
+   adjacent to busy intervals? For example, if working_hours
+   start at 09:00 and there is no busy interval before 09:00,
+   can a slot start exactly at 09:00? The spec (FR3, C3)
+   mentions buffer relative to busy intervals but does not
+   explicitly address window edges.
+
+2. SLOT PACKING: After placing one slot, does the next slot
+   start immediately after the previous one ends, or must
+   there be a buffer between consecutive returned slots as
+   well? FR4 states slots are exactly meeting_duration long,
+   but the packing strategy between returned slots is not
+   specified.
+
+3. BUSY INTERVALS ENTIRELY OUTSIDE WORKING HOURS: C9 states
+   busy intervals outside working_hours are clipped, but
+   should those entirely outside be silently discarded or
+   raise a warning?
+}
+
+
+
+Decision: ACCEPTED with the following clarifications:
+- Buffer is only enforced adjacent to busy intervals, not at
+  window boundaries. A slot may start at 09:00 if no busy
+  interval is adjacent.
+- Consecutive returned slots are packed immediately with no
+  gap between them (they are contiguous in free space).
+- Busy intervals entirely outside working_hours are silently
+  discarded with no warning.
+- The model's recommendation to add invariants, negative
+  requirements, and tie-breaking rules was noted and these
+  were incorporated into the constraint specification document
+  (see constraint_specification.md Q7, Q8, Q9).
+
+--------------------------------------------------------------
+
+
+Prompt 2:
+{
+"Objective of the System
+The system accepts working hours, busy intervals, a meeting
+duration, an optional buffer time, and an optional candidate
+window, and returns a chronologically ordered list of
+available appointment slots that satisfy all constraints.
+Each returned slot is exactly the requested duration in
+minutes and falls entirely within the effective scheduling
+window.
+
+Inputs and Outputs
+Inputs:
+working_hours: A tuple of two datetime objects (start, end).
+Validity: start must be strictly before end.
+busy_intervals: A list of (start, end) datetime tuples.
+Validity: May be empty, unsorted, or contain overlaps. If
+start > end, the system swaps them. If start == end, the
+interval is discarded.
+meeting_duration: An integer (minutes).
+Validity: Must be greater than 0.
+buffer_time (optional): An integer (minutes) for gaps
+before/after busy intervals.
+Validity: Must be 0 or greater. Defaults to 0.
+candidate_window (optional): A (start, end) datetime tuple.
+Validity: If provided, start must be before end. If not
+provided, the full working_hours are used.
+num_slots: An integer for the maximum results returned.
+Validity: Must be greater than 0.
+
+Output:
+The function returns a list of (start, end) datetime tuples.
+Each tuple is exactly meeting_duration minutes long. The list
+contains at most num_slots entries, sorted chronologically by
+start time. If no valid slot exists, it returns [].
+
+Functional Requirements
+FR1: The system shall only return slots within the
+intersection of working_hours and candidate_window.
+FR2: The system shall merge overlapping or adjacent busy
+intervals before calculating availability.
+FR3: The system shall ensure a minimum gap of buffer_time
+minutes exists between any returned slot and the nearest busy
+interval on each side.
+FR4: The system shall return slots that are exactly
+meeting_duration minutes in length.
+FR5: The system shall return results in chronological order.
+FR6: The system shall limit output to num_slots.
+FR7: The system shall return [] if no free block is long
+enough for the meeting plus required buffers.
+
+Constraints and Assumptions
+C1: Every returned slot must stay within the effective window
+bounds.
+C2: No returned slot may overlap with any busy interval.
+C3: Every returned slot must be at least buffer_time minutes
+from any busy interval.
+C4: Every returned slot must be exactly meeting_duration
+minutes long.
+C5: The system must return [] if the candidate_window does
+not overlap with working_hours.
+C6: The returned list must have at most num_slots entries.
+C7: The system must raise ValueError if meeting_duration <= 0,
+num_slots <= 0, or buffer_time < 0.
+C8: Overlapping/adjacent busy intervals must be merged before
+identifying gaps.
+C9: Busy intervals extending outside working_hours must be
+clipped; those entirely outside are discarded.
+C10: System output must be deterministic for identical inputs.
+
+Invariants
+INV1: Duration of every returned slot must be exactly
+meeting_duration.
+INV2: No slot shall overlap a busy interval or violate
+buffer_time distance.
+INV3: Output must be sorted by start time with zero internal
+overlaps.
+
+Negative Requirements
+NR1: Must not overlap with a busy interval.
+NR2: Must not start before or end after the effective window.
+NR3: Must not return slots closer than buffer_time to any
+busy interval.
+NR4: Must not return a slot shorter than meeting_duration.
+
+Tie-Breaking Rules
+The system identifies available time starting from the
+earliest point of the effective window. It places the first
+slot at the earliest possible valid timestamp. Subsequent
+slots are placed at the next earliest valid timestamp until
+the num_slots limit is reached.
+
+Exceptions and Day-Specific Rules
+meeting_duration <= 0, num_slots <= 0, or buffer_time < 0
+raises ValueError.
+If working_hours start >= end, raise ValueError.
+If candidate_window is provided and start >= end, raise
+ValueError.
+Busy intervals with start > end are corrected by swapping
+timestamps.
+
+Acceptance Criteria
+ID   Given                              When                    Then                                          Linked Constraint(s)
+AC1  working_hours 09:00-17:00,         Search function is      Returns [(09:00, 09:30), (09:30, 10:00)]      C1, C4, C6, C10
+     no busy_intervals,                 executed
+     meeting_duration 30, num_slots 2
+AC2  working_hours 09:00-17:00,         Search function is      No returned slot ends after 09:45 or           C2, C3
+     a busy_interval 10:00-11:00,       executed                starts before 11:15
+     and buffer_time 15
+AC3  working_hours 09:00-17:00,         Search function is      System returns no slots within the              C4
+     busy_intervals [(10:00, 10:40),    executed                20-minute gap (10:40-11:00)
+     (11:00, 17:00)],
+     meeting_duration 30
+AC4  working_hours 09:00-17:00 and      Search function is      Every slot starts >= 13:00 and ends <= 14:00   C1, C5
+     a candidate_window 13:00-14:00     executed
+AC5  busy_intervals [(10:00, 11:00),    Search function is      Intervals merged; no slots returned             C2, C8
+     (10:30, 11:30)]                    executed                between 10:00-11:30
+AC6  working_hours 09:00-17:00 and      Search function is      Returns []                                     C1, C2
+     busy_interval 09:00-17:00          executed
+AC7  working_hours 09:00-17:00 and      Search function is      Returns []                                     C5
+     candidate_window 18:00-20:00       executed
+AC8  working_hours 09:00-09:30 and      Search function is      Returns []                                     C1, C4
+     meeting_duration 60                executed
+AC9  meeting_duration of -1             Search function is      Raises a ValueError                            C7
+                                        executed
+
+Edge Cases
+EC1: Busy intervals fill the entire workday.
+     (Linked: C2 | Covered: AC6)
+EC2: Adjacent busy intervals with no gap (e.g., 10:00-11:00
+     and 11:00-12:00). (Linked: C8 | Covered: AC5)
+EC3: A free gap exists, but buffer_time on both sides reduces
+     usable space to less than meeting_duration.
+     (Linked: C3 | Covered: AC2)
+EC4: Requested meeting_duration is longer than the total
+     available working hours.
+     (Linked: C1, C4 | Covered: AC8)
+EC5: Busy intervals are provided in reverse chronological
+     order or are unsorted.
+     (Linked: C8, C10 | Covered: AC5)
+EC6: Provided candidate_window is entirely outside the bounds
+     of the working_hours.
+     (Linked: C5 | Covered: AC7)
+
+Traceability Table
+Constraint ID  Derived From                   Linked AC IDs       Linked Test Name(s)
+C1             Working Window Definition       AC1, AC4, AC6, AC8  test_within_working_hours, test_candidate_window_clip
+C2             Busy Interval Overlap Rules     AC2, AC5, AC6       test_no_busy_overlap, test_merged_intervals
+C3             Buffer Time Spacing Rules       AC2, AC3            test_buffer_spacing
+C4             Meeting Duration Constraints    AC1, AC3, AC8       test_slot_duration_exact, test_gap_too_small
+C5             Candidate Window Intersection   AC4, AC7            test_no_window_overlap, test_external_candidate_window
+C6             Output Size Limit               AC1                 test_max_slots_limit
+C7             Input Validation Requirements   AC9                 test_invalid_inputs_value_error
+C8             Pre-processing & Merging Rules  AC5                 test_merged_intervals, test_unsorted_busy
+C9             Busy Interval Boundary Clipping AC6                 test_clip_busy_to_working_hours
+C10            Deterministic Output            AC1                 test_deterministic_results
+
+Now based on this, implement the function find_available_slots
+in a file called solution.py."
+
+}
+
+Response 2:
+{
+I produced solution.py containing the function find_available_slots()
+with all requested behavior:
+- Input validation with ValueError for all invalid parameters
+  per C7 and the exception rules.
+- Effective window via max/min intersection of working_hours
+  and candidate_window.
+- Busy interval normalisation (swap reversed, discard
+  zero-length), clipping to effective window, sorting, and
+  merging of overlapping/adjacent intervals.
+- Free gap identification with buffer applied only next to
+  busy intervals (per clarification #1).
+- Greedy earliest-first contiguous slot placement (per
+  clarification #2 and tie-breaking rule).
+- All invariants (INV1-INV3) enforced structurally.
+- All negative requirements (NR1-NR4) satisfied by
+  construction.
+- Deterministic, sorted output capped at num_slots.
+}
+
+Verification: Manually traced AC1-AC9 against the code. All
+paths confirmed correct.
+
+Decision: ACCEPTED. Code saved to solution.py.
+
+--------------------------------------------------------------
+
+Prompt 3:
+{
+"Create tests.py using pytest. Import from
+solution.py. Write test classes grouped by Acceptance Criteria
+(AC1-AC9). Name each test to match the traceability table
+from Q13 of the constraint specification. Additionally
+include an edge-case test class for:
+- Clipping busy intervals to working hours (C9).
+- Adjacent busy intervals merging (EC2/C8).
+- Reversed busy intervals being swapped.
+- Zero-length busy intervals being discarded.
+- Output sorted with no overlaps (INV3).
+Cover every constraint (C1-C10) at least once. Each test
+class should have short docstrings indicating which AC/constraint
+it is intended to validate. Ensure all tests are deterministic
+and can be run with `pytest` from the project folder."
+}
+Response 3:
+{
+I produced tests.py containing a pytest test suite that:
+- Imports find_available_slots from solution.py and uses a
+  datetime helper (dt()) for readable timestamps.
+- Implements test classes grouped by Acceptance Criteria (AC1-AC9)
+  with test names matching the traceability table (Q13).
+- Covers buffer spacing/overlap rules (AC2/C2/C3), candidate window
+  intersection (AC4/AC7/C5), interval merging and unsorted input
+  handling (AC5/C8), full-day busy (AC6), duration overflow (AC8),
+  and invalid inputs raising ValueError (AC9/C7).
+- Adds an additional edge-case class to cover clipping busy
+  intervals to working hours (C9), adjacent interval merging,
+  reversed busy intervals swapped, zero-length busy discarded, and
+  output ordering/no overlaps (INV3).
+}
+Verification: Ran pytest locally; all tests passed against the
+current solution.py implementation.
+
+Decision: ACCEPTED. Code saved to tests.py.

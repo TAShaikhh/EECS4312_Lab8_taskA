@@ -1,3 +1,325 @@
+## Student Name: Umer Shaikh
+## Student ID: 218 931 790
+# Lab 8 – Test Suite
+import pytest
+from datetime import datetime, timedelta
+from solution import find_available_slots
+
+
+# ---------- Helper ----------
+def dt(hour: int, minute: int = 0) -> datetime:
+    """Shorthand: returns a datetime on 2025-01-01 at given hour:minute."""
+    return datetime(2025, 1, 1, hour, minute)
+
+
+# ================================================================
+# AC1 – No busy intervals, basic slot generation
+# Linked: C1, C4, C6, C10
+# ================================================================
+class TestAC1:
+    def test_within_working_hours(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=2,
+        )
+        assert result == [(dt(9, 0), dt(9, 30)), (dt(9, 30), dt(10, 0))]
+
+    def test_slot_duration_exact(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=5,
+        )
+        for start, end in result:
+            assert (end - start) == timedelta(minutes=30)
+
+    def test_max_slots_limit(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=2,
+        )
+        assert len(result) <= 2
+
+    def test_deterministic_results(self):
+        args = dict(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=3,
+        )
+        r1 = find_available_slots(**args)
+        r2 = find_available_slots(**args)
+        assert r1 == r2
+
+
+# ================================================================
+# AC2 – Buffer time respected around busy intervals
+# Linked: C2, C3
+# ================================================================
+class TestAC2:
+    def test_buffer_spacing(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10), dt(11))],
+            meeting_duration=30,
+            num_slots=20,
+            buffer_time=15,
+        )
+        for start, end in result:
+            if end <= dt(10):
+                assert end <= dt(9, 45)
+            if start >= dt(11):
+                assert start >= dt(11, 15)
+
+    def test_no_busy_overlap(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10), dt(11))],
+            meeting_duration=30,
+            num_slots=20,
+            buffer_time=15,
+        )
+        for start, end in result:
+            assert not (start < dt(11) and end > dt(10))
+
+
+# ================================================================
+# AC3 – Gap too small for meeting
+# Linked: C4
+# ================================================================
+class TestAC3:
+    def test_gap_too_small(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10), dt(10, 40)), (dt(11), dt(17))],
+            meeting_duration=30,
+            num_slots=10,
+        )
+        for start, end in result:
+            assert not (start >= dt(10, 40) and end <= dt(11))
+
+
+# ================================================================
+# AC4 – Candidate window clips results
+# Linked: C1, C5
+# ================================================================
+class TestAC4:
+    def test_candidate_window_clip(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=10,
+            candidate_window=(dt(13), dt(14)),
+        )
+        for start, end in result:
+            assert start >= dt(13)
+            assert end <= dt(14)
+
+
+# ================================================================
+# AC5 – Overlapping busy intervals merged
+# Linked: C2, C8
+# ================================================================
+class TestAC5:
+    def test_merged_intervals(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10), dt(11)), (dt(10, 30), dt(11, 30))],
+            meeting_duration=30,
+            num_slots=20,
+        )
+        for start, end in result:
+            assert not (start < dt(11, 30) and end > dt(10))
+
+    def test_unsorted_busy(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10, 30), dt(11, 30)), (dt(10), dt(11))],
+            meeting_duration=30,
+            num_slots=20,
+        )
+        for start, end in result:
+            assert not (start < dt(11, 30) and end > dt(10))
+
+
+# ================================================================
+# AC6 – Busy fills entire day → empty
+# Linked: C1, C2
+# ================================================================
+class TestAC6:
+    def test_full_day_busy(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(9), dt(17))],
+            meeting_duration=30,
+            num_slots=5,
+        )
+        assert result == []
+
+
+# ================================================================
+# AC7 – Candidate window outside working hours → empty
+# Linked: C5
+# ================================================================
+class TestAC7:
+    def test_external_candidate_window(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=5,
+            candidate_window=(dt(18), dt(20)),
+        )
+        assert result == []
+
+    def test_no_window_overlap(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=5,
+            candidate_window=(dt(18), dt(20)),
+        )
+        assert result == []
+
+
+# ================================================================
+# AC8 – Duration longer than available window → empty
+# Linked: C1, C4
+# ================================================================
+class TestAC8:
+    def test_duration_longer_than_window(self):
+        result = find_available_slots(
+            working_hours=(dt(9), dt(9, 30)),
+            busy_intervals=[],
+            meeting_duration=60,
+            num_slots=5,
+        )
+        assert result == []
+
+
+# ================================================================
+# AC9 – Invalid inputs raise ValueError
+# Linked: C7
+# ================================================================
+class TestAC9:
+    def test_invalid_inputs_value_error_duration(self):
+        with pytest.raises(ValueError):
+            find_available_slots(
+                working_hours=(dt(9), dt(17)),
+                busy_intervals=[],
+                meeting_duration=-1,
+                num_slots=5,
+            )
+
+    def test_invalid_inputs_value_error_num_slots(self):
+        with pytest.raises(ValueError):
+            find_available_slots(
+                working_hours=(dt(9), dt(17)),
+                busy_intervals=[],
+                meeting_duration=30,
+                num_slots=0,
+            )
+
+    def test_invalid_inputs_value_error_buffer(self):
+        with pytest.raises(ValueError):
+            find_available_slots(
+                working_hours=(dt(9), dt(17)),
+                busy_intervals=[],
+                meeting_duration=30,
+                num_slots=5,
+                buffer_time=-5,
+            )
+
+    def test_invalid_working_hours(self):
+        with pytest.raises(ValueError):
+            find_available_slots(
+                working_hours=(dt(17), dt(9)),
+                busy_intervals=[],
+                meeting_duration=30,
+                num_slots=5,
+            )
+
+    def test_invalid_candidate_window(self):
+        with pytest.raises(ValueError):
+            find_available_slots(
+                working_hours=(dt(9), dt(17)),
+                busy_intervals=[],
+                meeting_duration=30,
+                num_slots=5,
+                candidate_window=(dt(15), dt(14)),
+            )
+
+
+# ================================================================
+# Additional Edge-Case Tests
+# ================================================================
+class TestEdgeCases:
+    def test_clip_busy_to_working_hours(self):
+        """C9: Busy intervals extending outside working_hours are clipped."""
+        result = find_available_slots(
+            working_hours=(dt(9), dt(12)),
+            busy_intervals=[(dt(8), dt(10)), (dt(11), dt(18))],
+            meeting_duration=30,
+            num_slots=10,
+        )
+        assert result == [(dt(10), dt(10, 30)), (dt(10, 30), dt(11))]
+
+    def test_adjacent_busy_intervals(self):
+        """EC2: Adjacent busy intervals are merged."""
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10), dt(11)), (dt(11), dt(12))],
+            meeting_duration=30,
+            num_slots=20,
+        )
+        for start, end in result:
+            assert not (start < dt(12) and end > dt(10))
+
+    def test_reversed_busy_interval_swapped(self):
+        """Busy interval with start > end is corrected by swapping."""
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(11), dt(10))],
+            meeting_duration=30,
+            num_slots=20,
+        )
+        for start, end in result:
+            assert not (start < dt(11) and end > dt(10))
+
+    def test_zero_length_busy_interval_discarded(self):
+        """Busy interval with start == end is discarded."""
+        result = find_available_slots(
+            working_hours=(dt(9), dt(10)),
+            busy_intervals=[(dt(9, 30), dt(9, 30))],
+            meeting_duration=30,
+            num_slots=2,
+        )
+        assert result == [(dt(9), dt(9, 30)), (dt(9, 30), dt(10))]
+
+    def test_output_sorted_no_overlaps(self):
+        """INV3: Output sorted by start, no internal overlaps."""
+        result = find_available_slots(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(10), dt(11)), (dt(13), dt(14))],
+            meeting_duration=30,
+            num_slots=20,
+        )
+        for i in range(len(result) - 1):
+            assert result[i][0] < result[i + 1][0]
+            assert result[i][1] <= result[i + 1][0]
+
+
+# ============================================================================
+# Legacy tests (copied from `tests.py.bak_20260306_044353`)
+# ============================================================================
+
 import pytest
 from datetime import date, datetime, time, timedelta
 
