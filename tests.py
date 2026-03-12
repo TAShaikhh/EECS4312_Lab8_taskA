@@ -3,7 +3,7 @@
 # Lab 8 – Test Suite
 import pytest
 from datetime import datetime, timedelta
-from solution import find_available_slots
+from solution import find_available_slots, find_available_slots_with_diagnostics
 
 
 # ---------- Helper ----------
@@ -496,6 +496,73 @@ def test_a5_buffer_eliminates_small_gaps():
 
     # Buffer should not increase number of available slots (monotonicity)
     assert len(out_with_buffer) <= len(out_no_buffer)
+
+
+class TestPersonaAwareDiagnostics:
+    # Covers C6, AC6
+    def test_reason_code_candidate_window_outside_working_hours(self):
+        result = find_available_slots_with_diagnostics(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[],
+            meeting_duration=30,
+            num_slots=5,
+            candidate_window=(dt(18), dt(20)),
+        )
+        assert result.slots == []
+        assert result.no_slot_reason == "candidate_window_outside_working_hours"
+
+    # Covers C6, AC7
+    def test_reason_code_duration_exceeds_effective_window(self):
+        result = find_available_slots_with_diagnostics(
+            working_hours=(dt(9), dt(9, 30)),
+            busy_intervals=[],
+            meeting_duration=60,
+            num_slots=5,
+        )
+        assert result.slots == []
+        assert result.no_slot_reason == "duration_exceeds_effective_window"
+
+    # Covers C8, AC8
+    def test_processing_note_for_swapped_reversed_interval(self):
+        result = find_available_slots_with_diagnostics(
+            working_hours=(dt(9), dt(17)),
+            busy_intervals=[(dt(11), dt(10))],
+            meeting_duration=30,
+            num_slots=5,
+        )
+        assert any("swapped_reversed_interval" in note for note in result.processing_notes)
+
+    # Covers C8, AC8
+    def test_processing_note_for_zero_length_interval(self):
+        result = find_available_slots_with_diagnostics(
+            working_hours=(dt(9), dt(10)),
+            busy_intervals=[(dt(9, 30), dt(9, 30))],
+            meeting_duration=30,
+            num_slots=5,
+        )
+        assert any("discarded_zero_length_interval" in note for note in result.processing_notes)
+
+    # Covers C8, AC8
+    def test_processing_note_for_clipped_interval(self):
+        result = find_available_slots_with_diagnostics(
+            working_hours=(dt(9), dt(12)),
+            busy_intervals=[(dt(8), dt(10))],
+            meeting_duration=30,
+            num_slots=5,
+        )
+        assert any("clipped_to_effective_window" in note for note in result.processing_notes)
+
+    # Covers C6, AC8
+    def test_reason_code_for_buffers_eliminating_gap(self):
+        result = find_available_slots_with_diagnostics(
+            working_hours=(dt(9, 30), dt(10, 30)),
+            busy_intervals=[(dt(9, 30), dt(9, 50)), (dt(10, 10), dt(10, 30))],
+            meeting_duration=20,
+            num_slots=5,
+            buffer_time=5,
+        )
+        assert result.slots == []
+        assert result.no_slot_reason == "no_feasible_gap_after_conflicts_and_buffers"
 
 
 #################################################################################

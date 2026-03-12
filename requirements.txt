@@ -1,0 +1,205 @@
+## 1. Problem Understanding - Describe the problem your system solves.
+System purpose:
+Recommend valid appointment slots inside a working day while respecting existing busy intervals, meeting duration, optional buffer time, and an optional candidate window.
+
+Inputs to the system:
+Working hours, busy intervals, meeting duration, maximum number of slots, optional buffer time, and optional candidate window.
+
+Outputs produced by the system:
+A chronologically ordered list of valid appointment slots, plus deterministic diagnostics for normalization actions and no-result outcomes when explanation support is requested.
+
+Primary goal of the system:
+Help users find valid appointment slots quickly and reliably while providing predictable behavior for Jane and explicit explanations for Mo.
+---
+## 2. Assumptions - List assumptions about the environment, users, or inputs.
+A1:
+All input datetimes refer to the same calendar day.
+
+A2:
+Working hours form a non-wrapping interval where start is strictly earlier than end.
+
+A3:
+Meeting duration and buffer time are measured in whole minutes.
+
+A4:
+Users want the earliest valid slots first unless a stricter candidate window is supplied.
+
+A5:
+Busy intervals may be unsorted, overlapping, adjacent, reversed, or zero-length.
+
+A6:
+If explanation support is requested, users prefer deterministic reason codes over vague narrative messages.
+---
+## 3. Functional Requirements - Describe the main behaviors the system must perform.
+FR1:
+The system shall return appointment slots only within the intersection of working hours and the candidate window, if a candidate window is provided.
+
+FR2:
+The system shall normalize busy intervals by swapping reversed intervals, discarding zero-length intervals, clipping intervals to the effective window, and merging overlapping or adjacent intervals.
+
+FR3:
+The system shall return slots in deterministic earliest-first chronological order and limit the output to the requested maximum number of slots.
+
+FR4:
+The system shall ensure that every returned slot is exactly the requested meeting duration and does not overlap any busy interval or violate required buffer distance.
+
+FR5:
+The system shall provide deterministic explanation data describing normalization actions applied to busy intervals.
+
+FR6:
+The system shall provide a deterministic no-result reason code when no valid slots can be returned after input validation succeeds.
+---
+## 4. System Constraints - Constraints are conditions the system must always respect. Each constraint should reference the persona attribute it originates from.
+C1:
+The system must return only the earliest valid slots up to num_slots and must not return duplicate or unnecessary suggestions.
+Derived from persona attribute:
+Jane - Prefers concise outputs and minimal interaction when making decisions.
+Current Support Level:
+Fully supported by Lab 8 system.
+Description:
+Lab 8 already returns chronological slots and caps output at num_slots. No change was required.
+
+C2:
+The system must produce deterministic output ordering for identical inputs.
+Derived from persona attribute:
+Jane - Predictable and stable ordering of system decisions.
+Current Support Level:
+Fully supported by Lab 8 system.
+Description:
+Lab 8 already uses earliest-first chronological ordering. No change was required.
+
+C3:
+The system must automatically merge overlapping or adjacent busy intervals and exclude conflicting slots without requiring manual user correction.
+Derived from persona attribute:
+Jane - Trusts the system to resolve conflicts and enforce rules automatically.
+Current Support Level:
+Fully supported by Lab 8 system.
+Description:
+Lab 8 already sorts, merges, and filters conflicts automatically. No change was required.
+
+C4:
+Every returned slot must already satisfy working-hour, duration, overlap, and buffer constraints so the user does not need to manually verify correctness.
+Derived from persona attribute:
+Jane - Pain point: having to manually resolve conflicts or check system correctness.
+Current Support Level:
+Fully supported by Lab 8 system.
+Description:
+Lab 8 already enforces these core scheduling constraints before returning a slot. No change was required.
+
+C5:
+If multiple valid outcomes exist, the system must choose them using an explicit earliest-first tie-breaking rule.
+Derived from persona attribute:
+Mo - Deterministic system behavior under ties or conflicting conditions.
+Current Support Level:
+Partially supported by Lab 8 system.
+Description:
+Lab 8 behaved deterministically but did not expose the tie-breaking rule explicitly. The updated system documents and preserves earliest-first behavior.
+
+C6:
+The system must provide a clear no-result explanation when a slot is omitted or when no slots are returned.
+Derived from persona attribute:
+Mo - Clear explanations when outcomes are changed, skipped, or rejected.
+Current Support Level:
+Not supported by Lab 8 system.
+Description:
+Lab 8 returned an empty list without explaining why. The updated system adds deterministic no-result reason codes.
+
+C7:
+The system must explicitly handle invalid inputs and edge cases and must not fail silently.
+Derived from persona attribute:
+Mo - Explicitly handle edge cases instead of silent failure.
+Current Support Level:
+Partially supported by Lab 8 system.
+Description:
+Lab 8 raised ValueError for many invalid inputs, but successful no-result scenarios were still silent. The updated system preserves validation and adds explanations for empty results.
+
+C8:
+The system must expose normalization actions taken on busy intervals, including swapped, clipped, discarded, or merged intervals.
+Derived from persona attribute:
+Mo - Pain point: not understanding why the system changed or rejected an action.
+Current Support Level:
+Not supported by Lab 8 system.
+Description:
+Lab 8 normalized intervals internally but did not report those actions. The updated system adds deterministic processing notes.
+---
+## 5. Acceptance Criteria - Acceptance criteria define how system behavior will be verified.
+AC1:
+Given working hours 09:00-17:00, no busy intervals, meeting duration 30, and num_slots 2
+When the scheduling function is executed
+Then the system returns [(09:00, 09:30), (09:30, 10:00)] in chronological order.
+
+AC2:
+Given a busy interval 10:00-11:00 and buffer time 15 minutes
+When the scheduling function is executed
+Then no returned slot ends after 09:45 or starts before 11:15.
+
+AC3:
+Given overlapping or adjacent busy intervals
+When the scheduling function is executed
+Then the system merges them before calculating free gaps and does not return a slot inside the merged blocked interval.
+
+AC4:
+Given a candidate window that lies inside working hours
+When the scheduling function is executed
+Then every returned slot starts and ends inside the effective window.
+
+AC5:
+Given identical inputs in repeated executions
+When the scheduling function is executed twice
+Then both executions return the same ordered list of slots.
+
+AC6:
+Given a candidate window outside working hours
+When the diagnostics function is executed
+Then the system returns no slots and the no-result reason code is candidate_window_outside_working_hours.
+
+AC7:
+Given an effective window shorter than the meeting duration
+When the diagnostics function is executed
+Then the system returns no slots and the no-result reason code is duration_exceeds_effective_window.
+
+AC8:
+Given reversed, zero-length, or partially out-of-range busy intervals
+When the diagnostics function is executed
+Then the system records deterministic processing notes describing swap, discard, clip, or merge actions.
+---
+## 6. Edge Cases - Describe unusual or boundary situations the system must handle.
+EC1:
+Candidate window is entirely outside working hours.
+Expected system behavior:
+Return no slots and report candidate_window_outside_working_hours.
+
+EC2:
+Meeting duration is longer than the effective scheduling window.
+Expected system behavior:
+Return no slots and report duration_exceeds_effective_window.
+
+EC3:
+Buffers eliminate an otherwise valid free gap between busy intervals.
+Expected system behavior:
+Return no slots in that gap and report no_feasible_gap_after_conflicts_and_buffers if no other valid slots exist.
+
+EC4:
+Busy intervals are unsorted, reversed, overlapping, adjacent, or zero-length.
+Expected system behavior:
+Normalize them deterministically before slot generation and report the normalization actions.
+
+EC5:
+Busy intervals extend outside the effective window.
+Expected system behavior:
+Clip intervals to the effective window and discard intervals that fall completely outside it.
+---
+## 7. Traceability - Link functional requirements to constraints and acceptance criteria. FR → C → AC mapping
+FR1 -> C1, C4, C6 -> AC1, AC4, AC6, AC7
+
+FR2 -> C3, C7, C8 -> AC3, AC8
+
+FR3 -> C1, C2, C5 -> AC1, AC5
+
+FR4 -> C3, C4 -> AC2, AC3, AC4
+
+FR5 -> C7, C8 -> AC8
+
+FR6 -> C6, C7 -> AC6, AC7
+---
+## Revision Notes

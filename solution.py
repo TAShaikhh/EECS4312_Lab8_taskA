@@ -85,6 +85,22 @@ class Slot:
     start_time: time
 
 
+@dataclass(frozen=True)
+class SchedulingDiagnostics:
+    """
+    Detailed scheduling outcome used to explain why slots were or were not returned.
+
+    `processing_notes` records deterministic normalization actions taken on busy intervals.
+    `no_slot_reason` is set only when no valid slots can be produced.
+    """
+
+    slots: List[Tuple[datetime, datetime]]
+    effective_window: Tuple[datetime, datetime]
+    normalized_busy_intervals: List[Tuple[datetime, datetime]]
+    processing_notes: List[str]
+    no_slot_reason: Optional[str] = None
+
+
 class InfeasibleSchedule(Exception):
     """Raised when no valid slots can be produced (if required by handout)."""
 
@@ -198,6 +214,30 @@ def find_available_slots(
     list of (start, end) datetime tuples, each exactly meeting_duration minutes.
     """
 
+    diagnostics = find_available_slots_with_diagnostics(
+        working_hours=working_hours,
+        busy_intervals=busy_intervals,
+        meeting_duration=meeting_duration,
+        num_slots=num_slots,
+        buffer_time=buffer_time,
+        candidate_window=candidate_window,
+    )
+    return diagnostics.slots
+
+
+def find_available_slots_with_diagnostics(
+    working_hours: Tuple[datetime, datetime],
+    busy_intervals: List[Tuple[datetime, datetime]],
+    meeting_duration: int,
+    num_slots: int,
+    buffer_time: int = 0,
+    candidate_window: Optional[Tuple[datetime, datetime]] = None,
+) -> SchedulingDiagnostics:
+    """
+    Returns slot recommendations plus deterministic explanations for normalization
+    actions and no-result outcomes.
+    """
+
     # ---- Input Validation (C7) ----
     if meeting_duration <= 0:
         raise ValueError("meeting_duration must be greater than 0.")
@@ -215,6 +255,8 @@ def find_available_slots(
         if cw_start >= cw_end:
             raise ValueError("candidate_window start must be before end.")
 
+    processing_notes: List[str] = []
+
     # ---- Determine Effective Window (FR1, C1, C5) ----
     if candidate_window is not None:
         eff_start = max(wh_start, candidate_window[0])
@@ -225,34 +267,50 @@ def find_available_slots(
 
     # If no overlap between working_hours and candidate_window
     if eff_start >= eff_end:
-        return []
+        return SchedulingDiagnostics(
+            slots=[],
+            effective_window=(eff_start, eff_end),
+            normalized_busy_intervals=[],
+            processing_notes=["candidate_window does not overlap working_hours"],
+            no_slot_reason="candidate_window_outside_working_hours",
+        )
 
     duration_td = timedelta(minutes=meeting_duration)
     buffer_td = timedelta(minutes=buffer_time)
 
     # ---- Normalise Busy Intervals ----
     normalised = []
-    for interval in busy_intervals:
+    for index, interval in enumerate(busy_intervals):
         s, e = interval
         if s > e:
+            processing_notes.append(f"busy_interval[{index}] swapped_reversed_interval")
             s, e = e, s  # swap reversed intervals
         if s == e:
+            processing_notes.append(f"busy_interval[{index}] discarded_zero_length_interval")
             continue  # discard zero-length intervals
         normalised.append((s, e))
 
     # ---- Clip busy intervals to effective window (C9) ----
     clipped = []
-    for s, e in normalised:
+    for index, (s, e) in enumerate(normalised):
         cs = max(s, eff_start)
         ce = min(e, eff_end)
-        if cs < ce:
-            clipped.append((cs, ce))
+        if cs >= ce:
+            processing_notes.append(f"normalized_busy_interval[{index}] discarded_outside_effective_window")
+            continue
+        if cs != s or ce != e:
+            processing_notes.append(f"normalized_busy_interval[{index}] clipped_to_effective_window")
+        clipped.append((cs, ce))
 
     # ---- Sort and Merge Overlapping/Adjacent Busy Intervals (FR2, C8) ----
     clipped.sort(key=lambda x: x[0])
     merged: List[Tuple[datetime, datetime]] = []
     for s, e in clipped:
         if merged and s <= merged[-1][1]:
+            if s < merged[-1][1]:
+                processing_notes.append("merged_overlapping_busy_intervals")
+            else:
+                processing_notes.append("merged_adjacent_busy_intervals")
             merged[-1] = (merged[-1][0], max(merged[-1][1], e))
         else:
             merged.append((s, e))
@@ -302,7 +360,64 @@ def find_available_slots(
         while current + duration_td <= slot_end_limit:
             results.append((current, current + duration_td))
             if len(results) >= num_slots:
-                return results
+                return SchedulingDiagnostics(
+                    slots=results,
+                    effective_window=(eff_start, eff_end),
+                    normalized_busy_intervals=merged,
+                    processing_notes=processing_notes,
+                    no_slot_reason=None,
+                )
             current = current + duration_td
 
-    return results
+    no_slot_reason = _determine_no_slot_reason(
+        effective_window=(eff_start, eff_end),
+        merged_busy_intervals=merged,
+        meeting_duration=duration_td,
+        buffer_time=buffer_td,
+    )
+    return SchedulingDiagnostics(
+        slots=results,
+        effective_window=(eff_start, eff_end),
+        normalized_busy_intervals=merged,
+        processing_notes=processing_notes,
+        no_slot_reason=no_slot_reason,
+    )
+
+
+def _determine_no_slot_reason(
+    effective_window: Tuple[datetime, datetime],
+    merged_busy_intervals: List[Tuple[datetime, datetime]],
+    meeting_duration: timedelta,
+    buffer_time: timedelta,
+) -> str:
+    """Classifies why no slot could be produced once inputs are validated."""
+
+    eff_start, eff_end = effective_window
+    if eff_end - eff_start < meeting_duration:
+        return "duration_exceeds_effective_window"
+
+    if not merged_busy_intervals:
+        return "no_availability_in_effective_window"
+
+    free_gaps: List[Tuple[datetime, datetime]] = []
+    if eff_start < merged_busy_intervals[0][0]:
+        free_gaps.append((eff_start, merged_busy_intervals[0][0], False, True))
+    for index in range(len(merged_busy_intervals) - 1):
+        free_gaps.append(
+            (
+                merged_busy_intervals[index][1],
+                merged_busy_intervals[index + 1][0],
+                True,
+                True,
+            )
+        )
+    if merged_busy_intervals[-1][1] < eff_end:
+        free_gaps.append((merged_busy_intervals[-1][1], eff_end, True, False))
+
+    for gap_start, gap_end, has_left_busy, has_right_busy in free_gaps:
+        usable_start = gap_start + (buffer_time if has_left_busy else timedelta(0))
+        usable_end = gap_end - (buffer_time if has_right_busy else timedelta(0))
+        if usable_end - usable_start >= meeting_duration:
+            return "no_availability_in_effective_window"
+
+    return "no_feasible_gap_after_conflicts_and_buffers"
