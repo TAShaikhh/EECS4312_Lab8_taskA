@@ -412,23 +412,3 @@ Decision: ACCEPTED. Code saved to tests.py.
 Lab9 
 --------------------------------------------------------------
  
-Prompt 1: Jane prefers predictable and stable system decisions. What are some testable constraints I can derive from this persona attribute for an appointment slot recommender?
-Purpose: Clarify persona need and check whether it can be converted into a testable constraint.
-Response summary: Suggested turning predictability into deterministic ordering, earliest-first tie-breaking, and consistent output for identical inputs.
---------------------------------------------------------------
-Prompt 2: Mo needs explicit handling of edge cases instead of silent failure. What edge cases should I consider for an appointment slot recommender?
-Purpose: Brainstorm edge cases from the persona.
-Response summary: Identified invalid duration, invalid candidate window, reversed busy intervals, zero-length intervals, fully blocked days, and candidate windows outside working hours.
---------------------------------------------------------------
-Prompt 3: Is “clear explanations when no slot is returned” a functional requirement or a constraint derived from the persona?
-Purpose: Clarify how to classify a persona-driven requirement.
-Response summary: Indicated that explanation behavior can be written as a functional requirement and also traced as a persona-derived constraint focused on transparency.
---------------------------------------------------------------
-Prompt 4: Mo experiences stress when outcomes appear arbitrary. How can I operationalize that as a requirement?
-Purpose: Convert a persona pain point into a precise system constraint.
-Response summary: Recommended explicit tie-breaking rules, consistent normalization of inputs, and repeatable results for identical inputs.
---------------------------------------------------------------
-Prompt 5: Jane wants minimal interaction and limited information overload. How can that influence system behavior?
-Purpose: Brainstorm concise-output constraints from the primary persona.
-Response summary: Suggested returning only the earliest relevant slots, limiting results to the requested number, and avoiding duplicate or unnecessary suggestions.
---------------------------------------------------------------
